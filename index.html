@@ -47,11 +47,18 @@
 video.thumb:fullscreen{object-fit:contain;width:100%;height:100%;background:#000}
 video.thumb:-webkit-full-screen{object-fit:contain;width:100%;height:100%;background:#000}
 video.thumb::backdrop{background:#000}
+.art-expand{position:absolute;bottom:10px;right:10px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;z-index:4;display:flex;align-items:center;justify-content:center;padding:0}
+.art-expand:hover{background:var(--accent-2)}
+#lightbox{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:28px}
+#lb-img{max-width:100%;max-height:100%;object-fit:contain;box-shadow:0 12px 48px rgba(0,0,0,.6)}
+#lb-close{position:absolute;top:16px;right:20px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:22px;line-height:1;cursor:pointer}
+#lb-close:hover{background:rgba(255,255,255,.3)}
 </style>
 </head>
 <body>
 <div id="gate" class="gatewrap"><div class="gatecard"><div class="lock">&#128274;</div><h1>CamCom &middot; Rival Watch</h1><p class="sub">Competitor creative board. Enter the team password to decrypt.</p><form id="gateform"><input id="pw" type="password" placeholder="Password" autofocus autocomplete="current-password"><button id="go" type="submit">Unlock</button></form><div id="err" class="gateerr"></div><p class="gatenote">Encrypted client-side (AES-GCM). Nothing readable is stored on the server.</p></div></div>
 <div id="app" class="wrap-host" hidden></div>
+<div id="lightbox" hidden><button id="lb-close" type="button" aria-label="Close">&#215;</button><img id="lb-img" alt="ad creative, full size"></div>
 <script>
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function fmtClass(f){return {DCO:"f-dco",VIDEO:"f-video",IMAGE:"f-static",CAROUSEL:"f-carousel"}[f]||"f-static";}
@@ -68,6 +75,7 @@ function card(c,maxv){
     +'<div class="art-slot">'+mediaEl(m0)+'</div>'
     +'<span class="fmt-badge '+fmtClass(c.fmt)+'">'+esc(c.fmt_label)+'</span>'
     +'<a class="art-meta" href="'+esc(m0.ad)+'" target="_blank" rel="noopener" title="Open this ad in the Meta Ad Library">Meta &#8599;</a>'
+    +'<button type="button" class="art-expand" hidden title="View full size" aria-label="View full size"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>'
     +(multi?'<button type="button" class="art-nav prev" aria-label="Previous variant">&#8249;</button><button type="button" class="art-nav next" aria-label="Next variant">&#8250;</button><span class="art-count">1 / '+media.length+'</span>':'')
     +'</div>';
   return '<article class="card" data-brand="'+esc(c.brand)+'" data-fmt="'+esc(c.fmt)+'">'
@@ -141,23 +149,51 @@ function wireFilters(){
     blocks.forEach(function(bl){bl.hidden=(bl.querySelectorAll('.card:not([hidden])').length===0);});
   });});
 }
-function wirePager(){
-  document.querySelectorAll('.card-art[data-media]').forEach(function(art){
-    var media; try{media=JSON.parse(art.dataset.media);}catch(e){return;}
-    if(!media||media.length<2) return;
+function openLightbox(src){
+  var lb=document.getElementById('lightbox'), img=document.getElementById('lb-img');
+  if(!lb||!img||!src) return;
+  img.src=src; lb.hidden=false;
+}
+function closeLightbox(){
+  var lb=document.getElementById('lightbox'), img=document.getElementById('lb-img');
+  if(!lb) return; lb.hidden=true; if(img) img.removeAttribute('src');
+}
+function wireLightbox(){
+  var lb=document.getElementById('lightbox'); if(!lb||lb.dataset.wired) return; lb.dataset.wired="1";
+  var close=document.getElementById('lb-close');
+  if(close) close.addEventListener('click',closeLightbox);
+  lb.addEventListener('click',function(e){ if(e.target===lb) closeLightbox(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeLightbox(); });
+}
+function wireArt(){
+  document.querySelectorAll('.card-art').forEach(function(art){
+    var media; try{media=JSON.parse(art.dataset.media||'[]');}catch(e){media=[];}
+    if(!media.length) return;
     var i=0, slot=art.querySelector('.art-slot'),
         meta=art.querySelector('.art-meta'), count=art.querySelector('.art-count'),
+        expand=art.querySelector('.art-expand'),
         card=art.closest('.card'), viewad=card?card.querySelector('.viewad'):null;
-    function show(n){
-      i=(n+media.length)%media.length;
-      slot.innerHTML=mediaEl(media[i]);
-      art.classList.toggle('noimg', !(media[i].img||media[i].video));
-      if(meta) meta.href=media[i].ad;
-      if(viewad) viewad.href=media[i].ad;
-      if(count) count.textContent=(i+1)+' / '+media.length;
+    function apply(){
+      var it=media[i]||{};
+      if(expand) expand.hidden=!(it.img && !it.video);
     }
-    art.querySelector('.art-nav.prev').addEventListener('click',function(e){e.preventDefault();show(i-1);});
-    art.querySelector('.art-nav.next').addEventListener('click',function(e){e.preventDefault();show(i+1);});
+    apply();
+    if(expand) expand.addEventListener('click',function(e){
+      e.preventDefault(); var it=media[i]||{}; if(it.img && !it.video) openLightbox(it.img);
+    });
+    if(media.length>1){
+      var show=function(n){
+        i=(n+media.length)%media.length;
+        slot.innerHTML=mediaEl(media[i]);
+        art.classList.toggle('noimg', !(media[i].img||media[i].video));
+        if(meta) meta.href=media[i].ad;
+        if(viewad) viewad.href=media[i].ad;
+        if(count) count.textContent=(i+1)+' / '+media.length;
+        apply();
+      };
+      art.querySelector('.art-nav.prev').addEventListener('click',function(e){e.preventDefault();show(i-1);});
+      art.querySelector('.art-nav.next').addEventListener('click',function(e){e.preventDefault();show(i+1);});
+    }
   });
 }
 
@@ -191,7 +227,8 @@ async function unlock(ev){
     app.hidden=false;
     try{ document.title="Rival Watch · The Oodie Set"; }catch(e){}
     wireFilters();
-    wirePager();
+    wireArt();
+    wireLightbox();
     try{ sessionStorage.setItem('rw_pw',pw); }catch(e){}
   }catch(e){
     errEl.textContent="Wrong password — try again.";
