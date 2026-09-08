@@ -35,6 +35,15 @@
 .art-meta{position:absolute;top:10px;right:10px;font-family:var(--mono);font-size:10px;color:#fff;background:rgba(0,0,0,.62);padding:3px 8px;border-radius:5px;text-decoration:none;z-index:3}
 .art-meta:hover{background:var(--accent-2)}
 .card-top{margin-bottom:8px}
+[hidden]{display:none!important}
+.art-slot{width:100%;height:100%}
+.art-slot .thumb{width:100%;height:100%;object-fit:cover;display:block;background:#000}
+.card:hover .art-slot img.thumb{transform:scale(1.03)}
+.art-nav{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:17px;line-height:1;cursor:pointer;z-index:4;display:flex;align-items:center;justify-content:center;padding:0}
+.art-nav:hover{background:var(--accent-2)}
+.art-nav.prev{left:8px}
+.art-nav.next{right:8px}
+.art-count{position:absolute;bottom:10px;left:10px;font-family:var(--mono);font-size:10px;color:#fff;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px;z-index:3;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -43,15 +52,20 @@
 <script>
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function fmtClass(f){return {DCO:"f-dco",VIDEO:"f-video",IMAGE:"f-static",CAROUSEL:"f-carousel"}[f]||"f-static";}
+function mediaEl(item){
+  if(item && item.video) return '<video class="thumb" controls playsinline preload="metadata"'+(item.img?' poster="'+esc(item.img)+'"':'')+'><source src="'+esc(item.video)+'" type="video/mp4"></video>';
+  if(item && item.img) return '<img class="thumb" loading="lazy" src="'+esc(item.img)+'" alt="ad creative">';
+  return '';
+}
 function card(c,maxv){
   var v=c.variants, barw=Math.round(100*v/maxv), heavy=v>=8?" heavy":"";
-  var media = c.video
-    ? '<video class="thumb" controls playsinline preload="metadata"'+(c.img?' poster="'+esc(c.img)+'"':'')+'><source src="'+esc(c.video)+'" type="video/mp4"></video>'
-    : (c.img?'<img class="thumb" loading="lazy" src="'+esc(c.img)+'" alt="'+esc(c.brand)+' ad creative" onerror="var a=this.closest(&quot;.card-art&quot;);a.classList.add(&quot;noimg&quot;);this.remove();">':'');
-  var art='<div class="card-art'+((c.img||c.video)?'':' noimg')+'">'
-    +media
+  var media=(c.media&&c.media.length)?c.media:[{img:c.img||"",video:c.video||"",ad:c.ad||""}];
+  var m0=media[0], multi=media.length>1;
+  var art='<div class="card-art'+((m0.img||m0.video)?'':' noimg')+'" data-media="'+esc(JSON.stringify(media))+'">'
+    +'<div class="art-slot">'+mediaEl(m0)+'</div>'
     +'<span class="fmt-badge '+fmtClass(c.fmt)+'">'+esc(c.fmt_label)+'</span>'
-    +'<a class="art-meta" href="'+esc(c.ad)+'" target="_blank" rel="noopener" title="Open this ad in the Meta Ad Library">Meta &#8599;</a>'
+    +'<a class="art-meta" href="'+esc(m0.ad)+'" target="_blank" rel="noopener" title="Open this ad in the Meta Ad Library">Meta &#8599;</a>'
+    +(multi?'<button type="button" class="art-nav prev" aria-label="Previous variant">&#8249;</button><button type="button" class="art-nav next" aria-label="Next variant">&#8250;</button><span class="art-count">1 / '+media.length+'</span>':'')
     +'</div>';
   return '<article class="card" data-brand="'+esc(c.brand)+'" data-fmt="'+esc(c.fmt)+'">'
     +art
@@ -63,7 +77,7 @@ function card(c,maxv){
     +'<footer class="card-foot"><div class="variants'+heavy+'" title="'+v+' near-identical live variants of this creative">'
     +'<span class="vnum">'+v+'×</span><span class="vlabel">live variant'+(v!==1?"s":"")+'</span>'
     +'<span class="vbar"><span style="width:'+barw+'%"></span></span></div>'
-    +'<a class="viewad" href="'+esc(c.ad)+'" target="_blank" rel="noopener">View live ad &#8599;</a></footer>'
+    +'<a class="viewad" href="'+esc(m0.ad)+'" target="_blank" rel="noopener">View live ad &#8599;</a></footer>'
     +'</div></article>';
 }
 function render(d){
@@ -124,6 +138,25 @@ function wireFilters(){
     blocks.forEach(function(bl){bl.hidden=(bl.querySelectorAll('.card:not([hidden])').length===0);});
   });});
 }
+function wirePager(){
+  document.querySelectorAll('.card-art[data-media]').forEach(function(art){
+    var media; try{media=JSON.parse(art.dataset.media);}catch(e){return;}
+    if(!media||media.length<2) return;
+    var i=0, slot=art.querySelector('.art-slot'),
+        meta=art.querySelector('.art-meta'), count=art.querySelector('.art-count'),
+        card=art.closest('.card'), viewad=card?card.querySelector('.viewad'):null;
+    function show(n){
+      i=(n+media.length)%media.length;
+      slot.innerHTML=mediaEl(media[i]);
+      art.classList.toggle('noimg', !(media[i].img||media[i].video));
+      if(meta) meta.href=media[i].ad;
+      if(viewad) viewad.href=media[i].ad;
+      if(count) count.textContent=(i+1)+' / '+media.length;
+    }
+    art.querySelector('.art-nav.prev').addEventListener('click',function(e){e.preventDefault();show(i-1);});
+    art.querySelector('.art-nav.next').addEventListener('click',function(e){e.preventDefault();show(i+1);});
+  });
+}
 
 var B64={dec:function(b64){var bin=atob(b64);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u;}};
 async function decryptBundle(bundle,password){
@@ -155,6 +188,7 @@ async function unlock(ev){
     app.hidden=false;
     try{ document.title="Rival Watch · The Oodie Set"; }catch(e){}
     wireFilters();
+    wirePager();
     try{ sessionStorage.setItem('rw_pw',pw); }catch(e){}
   }catch(e){
     errEl.textContent="Wrong password — try again.";
